@@ -881,27 +881,33 @@ async function sendTelegram() {
   }
 }
 
-// 自动访问项目URL
+//（内部闭环保活，不依赖外部服务、不依赖 Back4App 域名）：
 async function AddVisitTask() {
-  if (!AUTO_ACCESS || !PROJECT_URL) {
+  if (!AUTO_ACCESS) {
     console.log("Skipping adding automatic access task");
     return;
   }
 
-  try {
-    const response = await axios.post('https://oooo.serv00.net/add-url', {
-      url: PROJECT_URL
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
+  // 优先取设置的 PROJECT_URL，如果为空或失效，自动回落为请求本地 3000 端口
+  const targetUrl = PROJECT_URL || `http://127.0.0.1:${PORT}/`;
+
+  console.log(`Starting local keep-alive task targeting: ${targetUrl}`);
+
+  // 每 120 秒（2 分钟）自动发起一次请求
+  setInterval(async () => {
+    try {
+      await axios.get(targetUrl, { timeout: 5000 });
+      console.log(`[Keep-Alive] Successfully pinged ${targetUrl}`);
+    } catch (error) {
+      // 如果外网 URL 失败（比如域名过期），自动保底 PING 本地端口
+      try {
+        await axios.get(`http://127.0.0.1:${PORT}/`, { timeout: 3000 });
+        console.log(`[Keep-Alive] Fallback ping to local http://127.0.0.1:${PORT}/ successful`);
+      } catch (localErr) {
+        console.error(`[Keep-Alive] Ping failed: ${localErr.message}`);
       }
-    });
-    console.log(`automatic access task added successfully`);
-    return response;
-  } catch (error) {
-    console.error(`Add automatic access task faild: ${error.message}`);
-    return null;
-  }
+    }
+  }, 120000);
 }
 
 // 主运行逻辑
